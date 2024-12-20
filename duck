@@ -1,0 +1,67 @@
+#!/bin/bash
+#
+# duck, updates IP adress for a given domain at duckdns.org
+# edit variables domain and token
+# add duck in a binary directory and execute with crontab
+#
+
+# domain, as in domain.duckdns.org
+domain=foobar
+
+# token from duckdns.org
+token=87e81d64-849a-4f1x-b8af-71a655433ea5
+
+# path for log file
+log_file=/var/log/duck/duck.log
+
+# log start
+echo "*** $(date +'%F %H:%M'): Executing IP update for $domain.duckdns.org ***" | tee -a $log_file
+
+# test if log directory is available
+log_path=${log_file%/*}/
+if [ -d $log_path ]
+then
+    # log_path exist
+else
+    # creating log path
+    mkdir $log_path
+fi
+
+
+# internet connectivity check
+echo -e "GET http://duckdns.org HTTP/1.0\n\n" | nc duckdns.org 80 > /dev/null 2>&1
+if [ $? -eq 0 ]
+then
+    # duckdns.org available
+else
+    echo "- Unable to reach duckdns.org." | tee -a $log_file
+    exit 3
+
+# gets current ip + log entry
+current_ip=$(curl -s ifconfig.me)
+echo "+ Current IP is $current_ip" | tee -a $log_file
+
+# gets domain ip + log entry
+duck_ip=$(host $domain.duckdns.org | grep -o -E '\s([0-9]\.?)+$' | xargs)
+echo  "+ IP for $domain.duckdns.org is $duck_ip" | tee -a $log_file
+
+# checks if domain ip is updated
+if [ $current_ip == $duck_ip ]
+then
+    # domain ip is current ip + log entry
+    echo "+ IP for $domain.duckdns.org is correct. Nothing to do." | tee -a $log_file
+else
+    # updates domain ip to current ip
+    resp=$(echo url="https://www.duckdns.org/update?domains=$domain&token=$token&ip=" | curl -s -k -K -)
+    # check duckdns respons
+    if [ $resp == 'OK' ]
+    then
+        # duckdns repons OK + log entry
+        echo "+ IP updated for $domain.duckdns.org. DuckDNS respons: $resp" | tee -a $log_file
+    else
+        # duckdns respon not OK + log entry
+        echo "- IP update for $domain.duckdns.org failed. DuckDNS respons: $resp" | tee -a $log_file
+        exit 3
+    fi
+fi
+exit 0
